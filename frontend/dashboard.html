@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>NIS2 Compliance Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; background: #f4f7f6; color: #333; }
+    .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 12px; shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    #drop-zone {
+      border: 2px dashed #3498db; padding: 40px; text-align: center;
+      margin-bottom: 20px; cursor: pointer; border-radius: 8px; color: #3498db;
+      transition: 0.3s;
+    }
+    #drop-zone.dragover { background-color: #ebf5fb; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th { background: #f8f9fa; color: #555; }
+    th, td { border: 1px solid #eee; padding: 12px; text-align: left; font-size: 14px; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; background: #e8f4fd; color: #2980b9; }
+    input[type="range"] { width: 100%; margin: 10px 0; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>NIS2 Article 21 Analyzer</h2>
+  
+  <div id="drop-zone">Drag & drop compliance docs (PDF/Text) here, or click to select</div>
+  <input type="file" id="file-input" style="display:none;" />
+
+  <div style="margin: 20px 0;">
+    <label><strong>Min Confidence Filter:</strong> <span id="confidence-value">0</span>%</label>
+    <input type="range" id="confidence-slider" min="0" max="100" value="0">
+  </div>
+
+  <canvas id="domainChart" width="600" height="200"></canvas>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Source Snippet</th>
+        <th>Control</th>
+        <th>NIS2 Domain</th>
+        <th>Confidence</th>
+      </tr>
+    </thead>
+    <tbody id="results-body"></tbody>
+  </table>
+</div>
+
+<script>
+let results = [];
+const NIS2_DOMAINS = ["Incident Handling", "Risk Assessment", "Supply Chain Security", "Network & Information System Security"];
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); handleFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+async function handleFiles(files) {
+  dropZone.innerText = "Analyzing...";
+  for (let file of files) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/analyze', { method: 'POST', body: formData });
+      const data = await response.json();
+      results = [...results, ...data.findings];
+      updateDashboard();
+    } catch (err) {
+      alert("Error: Ensure the Python Backend is running at http://localhost:8000");
+    }
+  }
+  dropZone.innerText = "Drag & drop files here, or click to select files";
+}
+
+function updateDashboard() {
+  const minConf = parseInt(document.getElementById('confidence-slider').value);
+  document.getElementById('confidence-value').innerText = minConf;
+
+  const tbody = document.getElementById('results-body');
+  tbody.innerHTML = '';
+  
+  const filtered = results.filter(r => r.confidence >= minConf);
+  
+  filtered.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.sourceText}</td><td>${r.controlIdentified}</td>
+                    <td><span class="badge">${r.domain}</span></td><td>${r.confidence}%</td>`;
+    tbody.appendChild(tr);
+  });
+
+  const counts = NIS2_DOMAINS.map(d => filtered.filter(r => r.domain === d).length);
+  chart.data.datasets[0].data = counts;
+  chart.update();
+}
+
+document.getElementById('confidence-slider').addEventListener('input', updateDashboard);
+
+const ctx = document.getElementById('domainChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: NIS2_DOMAINS,
+    datasets: [{ label: 'Findings', data: [0,0,0,0], backgroundColor: '#3498db' }]
+  },
+  options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+});
+</script>
+</body>
+</html>

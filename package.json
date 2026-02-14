@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "react-dropzone": "^15.0.0",
+    "recharts": "^3.7.0"
+  }
+}
